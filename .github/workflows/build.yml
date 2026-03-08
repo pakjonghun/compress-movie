@@ -1,0 +1,64 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            ffmpeg-target: aarch64-apple-darwin
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            ffmpeg-target: x86_64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            ffmpeg-target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Download ffmpeg (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: bash scripts/download-ffmpeg.sh ${{ matrix.ffmpeg-target }}
+
+      - name: Download ffmpeg (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: bash scripts/download-ffmpeg.sh ${{ matrix.ffmpeg-target }}
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Video Compressor ${{ github.ref_name }}'
+          releaseBody: 'ffmpeg 기반 영상 압축기'
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
